@@ -1,0 +1,232 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Craps Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .roll-history {
+            font-family: monospace;
+            font-size: 1.1em;
+        }
+        .roll-number {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            line-height: 40px;
+            text-align: center;
+            margin: 2px;
+            border-radius: 50%;
+            font-weight: bold;
+        }
+        .roll-7 { background-color: #ff6b6b; color: white; }
+        .roll-7-11 { background-color: #4ecdc4; color: white; }
+        .roll-point { background-color: #45b7d1; color: white; }
+        .roll-craps { background-color: #96ceb4; color: white; }
+        .confidence-high { color: green; }
+        .confidence-medium { color: orange; }
+        .confidence-low { color: red; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .stat-box {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">Craps Analyzer</h1>
+
+        <!-- Settings Form -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Settings</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="row g-3">
+                    <input type="hidden" name="reset" value="1">
+                    <div class="col-md-6">
+                        <label class="form-label">Bankroll</label>
+                        <input type="number" name="new_bankroll" class="form-control" value="{{ bankroll }}" min="100">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Strategy</label>
+                        <select name="new_strategy" class="form-control">
+                            <option value="CONSERVATIVE" {% if strategy == 'CONSERVATIVE' %}selected{% endif %}>Conservative</option>
+                            <option value="MEDIUM" {% if strategy == 'MEDIUM' %}selected{% endif %}>Medium</option>
+                            <option value="AGGRESSIVE" {% if strategy == 'AGGRESSIVE' %}selected{% endif %}>Aggressive</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">Update Settings</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Input Form -->
+        <!-- Input Form -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Enter Roll</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">New Roll (2-12)</label>
+                        <input type="number" name="roll" class="form-control" min="2" max="12">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Button Position</label>
+                        <select name="button" class="form-control">
+                            <option value="OFF" {% if current_button == 'OFF' %}selected{% endif %}>OFF</option>
+                            {% for point in [4, 5, 6, 8, 9, 10] %}
+                            <option value="{{ point }}" {% if current_button|string == point|string %}selected{% endif %}>{{ point }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-success me-2">Enter Roll</button>
+                        <button type="submit" name="clear_rolls" value="1" class="btn btn-danger" formnovalidate>Clear History</button>
+                    </div>
+                </form>
+
+                <!-- Roll History Input -->
+                <form method="POST" class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Insert Roll History (comma-separated, oldest to newest)</label>
+                        <div class="input-group">
+                            <input type="text" name="roll_history" class="form-control"
+                                   placeholder="e.g., 4,7,8,11,2,7 (oldest to newest)"
+                                   pattern="^\s*\d{1,2}(\s*,\s*\d{1,2})*\s*$">
+                            <button type="submit" class="btn btn-primary">Insert History</button>
+                        </div>
+                        <div class="form-text">
+                            Enter numbers between 2-12, separated by commas. List them from oldest to newest.
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Roll History -->
+        {% if rolls %}
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Roll History</h5>
+            </div>
+            <div class="card-body">
+                <div class="roll-history">
+                    {% for roll in rolls %}
+                    <span class="roll-number
+                        {% if roll == 7 %}roll-7
+                        {% elif roll in [11] %}roll-7-11
+                        {% elif roll in [4,5,6,8,9,10] %}roll-point
+                        {% elif roll in [2,3,12] %}roll-craps{% endif %}">
+                        {{ roll }}
+                    </span>
+                    {% endfor %}
+                </div>
+
+                <!-- Roll Statistics -->
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <h6>Total Rolls</h6>
+                        <strong>{{ rolls|length }}</strong>
+                    </div>
+                    <div class="stat-box">
+                        <h6>7's</h6>
+                        <strong>{{ roll_stats.sevens }} ({{ "%.1f"|format(roll_stats.seven_percent) }}%)</strong>
+                    </div>
+                    <div class="stat-box">
+                        <h6>Points</h6>
+                        <strong>{{ roll_stats.points }} ({{ "%.1f"|format(roll_stats.point_percent) }}%)</strong>
+                    </div>
+                    <div class="stat-box">
+                        <h6>Craps</h6>
+                        <strong>{{ roll_stats.craps }} ({{ "%.1f"|format(roll_stats.craps_percent) }}%)</strong>
+                    </div>
+                    <div class="stat-box">
+                        <h6>Most Common</h6>
+                        <strong>{{ roll_stats.most_common[0] }} ({{ roll_stats.most_common[1] }}x)</strong>
+                    </div>
+                    <div class="stat-box">
+                        <h6>Longest Streak</h6>
+                        <strong>{{ roll_stats.longest_streak[0] }} ({{ roll_stats.longest_streak[1] }}x)</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Analysis Results -->
+        {% if result and result.recommendations %}
+        <div class="card mb-4">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">Analysis Results</h5>
+            </div>
+            <div class="card-body">
+                <!-- Debug Info -->
+                <div class="mb-3">
+                    <small class="text-muted">
+                        Button: {{ current_button }}<br>
+                        Number of recommendations: {{ result.recommendations|length }}
+                    </small>
+                </div>
+
+                <!-- Next Roll Prediction -->
+                <h6>Next Roll Prediction:</h6>
+                <p>
+                    Primary: {{ result.prediction.primary }}
+                    (Confidence: <span class="
+                        {% if result.prediction.confidence > 0.7 %}confidence-high
+                        {% elif result.prediction.confidence > 0.4 %}confidence-medium
+                        {% else %}confidence-low{% endif %}
+                    ">{{ "%.1f"|format(result.prediction.confidence * 100) }}%</span>)
+                </p>
+
+                <!-- Betting Recommendations -->
+                <h6>Recommended Bets:</h6>
+                <div class="list-group">
+                    {% for bet in result.recommendations %}
+                    <div class="list-group-item">
+                        <h6 class="mb-1">{{ bet.bet }} - ${{ bet.amount }}</h6>
+                        <p class="mb-1"><small>{{ bet.reason }}</small></p>
+                        {% if bet.confidence %}
+                        <p class="mb-1">
+                            <small>Confidence: {{ "%.1f"|format(bet.confidence * 100) }}%</small>
+                        </p>
+                        {% endif %}
+                        <ul class="mb-1">
+                            {% for rule in bet.rules %}
+                            <li><small>{{ rule }}</small></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Bankroll Info -->
+                <h6 class="mt-3">Bankroll Management:</h6>
+                <ul>
+                    <li>Current Bankroll: ${{ result.bankroll_info.starting }}</li>
+                    <li>Base Unit: ${{ result.bankroll_info.base_unit }}</li>
+                    <li>Stop Loss: ${{ result.bankroll_info.stop_loss }}</li>
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
